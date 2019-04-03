@@ -1,0 +1,5 @@
+dependencies {
+    compileOnly group: 'org.apache.kafka', name: 'connect-runtime', version: "${kafka_version}"
+    testCompile group: 'org.apache.kafka', name: 'connect-runtime', version: "${kafka_version}"
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
