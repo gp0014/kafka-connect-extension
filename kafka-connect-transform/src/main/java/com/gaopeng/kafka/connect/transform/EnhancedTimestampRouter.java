@@ -22,7 +22,7 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
     private static final Pattern TIMESTAMP = Pattern.compile("${timestamp}", Pattern.LITERAL);
 
     public static final String OVERVIEW_DOC =
-            "Update the record's topic field as a function of the original topic value and the record timestamp."
+            "Update the record's topic field as a function of the original topic value and the a timestamp field value."
                     + "<p/>"
                     + "This is mainly useful for sink connectors, since the topic field is often used to determine the equivalent entity name in the destination system"
                     + "(e.g. database table or search index name).";
