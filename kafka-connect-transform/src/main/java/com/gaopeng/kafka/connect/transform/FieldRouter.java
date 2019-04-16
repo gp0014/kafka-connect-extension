@@ -87,16 +87,16 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
         if (StringUtils.isEmpty(field)) {
             throw new DataException(String.format("You must configure at least \"%s\" or \"%s\"", ConfigName.TOPIC_FIELD_MAP, ConfigName.DEFAULT_FIELD));
         }
-        String fieldValue = null;
+        Object fieldValue = null;
         if (record.value() instanceof Map) {
             final Map<String, Object> values = Requirements.requireMapOrNull(record.value(), "transform topic");
             if (values != null && values.containsKey(field)) {
-                fieldValue = values.get(field).toString();
+                fieldValue = values.get(field);
             }
         } else if (record.value() instanceof Struct) {
             Struct struct = Requirements.requireStructOrNull(record.value(), "transform topic");
             if (struct != null && struct.get(field) != null) {
-                fieldValue = struct.get(field).toString();
+                fieldValue = struct.get(field);
             }
         } else {
             throw new DataException("The record is neither a Map nor a Struct");
@@ -114,7 +114,7 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
         }
 
         final String replace1 = TOPIC.matcher(topicFormat).replaceAll(Matcher.quoteReplacement(topic));
-        final String updatedTopic = VALUE.matcher(replace1).replaceAll(Matcher.quoteReplacement(fieldValue));
+        final String updatedTopic = VALUE.matcher(replace1).replaceAll(Matcher.quoteReplacement(fieldValue.toString()));
         return record.newRecord(
                 updatedTopic, record.kafkaPartition(),
                 record.keySchema(), record.key(),

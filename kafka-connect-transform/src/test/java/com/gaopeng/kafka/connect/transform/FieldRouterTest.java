@@ -84,7 +84,7 @@ public class FieldRouterTest {
     public void testStructValue() {
         Map<String, Object> config = new HashMap<>();
         config.put("default.field", "task_id");
-        config.put("value.expression", "string.substring(value,string.length(value)-1)");
+        config.put("value.expression", "value % 5");
         xform.configure(config);
         Schema schema = SchemaBuilder.struct()
                 .field("user_id",SchemaBuilder.int32())
@@ -99,7 +99,7 @@ public class FieldRouterTest {
                 null, value,
                 1483425001864L
         );
-        assertEquals("test-9", xform.apply(record).topic());
+        assertEquals("test-4", xform.apply(record).topic());
     }
 
     @Test
@@ -173,7 +173,7 @@ public class FieldRouterTest {
         xform.configure(config);
         Map<String, Object> value = new HashMap<>();
         value.put("user_id", 987654321);
-        value.put("task_id", 123456789);
+        value.put("task_id", "123456789");
         final SourceRecord record = new SourceRecord(
                 null, null,
                 "test", 0,
