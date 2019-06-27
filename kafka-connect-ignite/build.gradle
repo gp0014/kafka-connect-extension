@@ -1,0 +1,16 @@
+dependencies {
+    compile(project(':common'))
+    compileOnly group: 'org.apache.kafka', name: 'connect-runtime', version: "${kafka_version}"
+    testCompile group: 'org.apache.kafka', name: 'connect-runtime', version: "${kafka_version}"
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+import org.apache.tools.ant.filters.ReplaceTokens
+
+processResources {
+    filesMatching('connect.properties') {
+        filter ReplaceTokens, tokens: [
+                "version": project.parent.version
+        ]
+    }
+}

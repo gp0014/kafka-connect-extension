@@ -1,5 +1,7 @@
 package com.gaopeng.kafka.connect.transform;
 
+import org.apache.kafka.connect.data.Struct;
+import org.apache.kafka.connect.errors.DataException;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.junit.After;
 import org.junit.Test;
@@ -19,7 +21,7 @@ public class EnhancedTimestampRouterTest {
         xform.close();
     }
 
-    @Test
+    @Test(expected= DataException.class)
     public void testDefaultConfiguration() {
         xform.configure(Collections.emptyMap()); // defaults
         final SourceRecord record = new SourceRecord(
@@ -29,7 +31,8 @@ public class EnhancedTimestampRouterTest {
                 null, null,
                 1483425001864L
         );
-        assertEquals("test-20170103", xform.apply(record).topic());
+        xform.apply(record);
+//        assertEquals("test-20170103", xform.apply(record).topic());
     }
 
     @Test

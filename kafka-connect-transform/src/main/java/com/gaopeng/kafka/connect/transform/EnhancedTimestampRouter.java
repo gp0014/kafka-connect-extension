@@ -5,6 +5,7 @@ import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.transforms.ExtractField;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.Requirements;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
@@ -20,6 +21,8 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
     private static final Pattern TOPIC = Pattern.compile("${topic}", Pattern.LITERAL);
 
     private static final Pattern TIMESTAMP = Pattern.compile("${timestamp}", Pattern.LITERAL);
+
+    private static final String DELETED_FIELD = "__deleted";
 
     public static final String OVERVIEW_DOC =
             "Update the record's topic field as a function of the original topic value and the a timestamp field value."
@@ -52,6 +55,7 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
     private Map<String, String> timestampFieldMap = Collections.emptyMap();
     private String defaultTimestampField;
     private Set<String> ignoreTopics = Collections.emptySet();
+    private final ExtractField<R> deleteDelegate = new ExtractField.Value<>();
 
     @Override
     public void configure(Map<String, ?> props) {
@@ -76,6 +80,11 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
                     .map(pair -> pair.split(":"))
                     .collect(Collectors.toMap(pair -> pair[0], pair -> pair[1]));
         }
+
+        Map<String, String> delegateConfig = new HashMap<>();
+        delegateConfig.put("field", DELETED_FIELD);
+        deleteDelegate.configure(delegateConfig);
+
     }
 
     @Override
@@ -85,18 +94,8 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
             return record;
         }
         final String field = timestampFieldMap.containsKey(topic) ? timestampFieldMap.get(topic) : defaultTimestampField;
-        Long timestamp = record.timestamp();
-        if (record.value() instanceof Map) {
-            final Map<String, Object> values = Requirements.requireMapOrNull(record.value(), "format timestamp");
-            if (values != null && values.containsKey(field)) {
-                timestamp = (Long) values.get(field);
-            }
-        } else if (record.value() instanceof Struct) {
-            Struct struct = Requirements.requireStructOrNull(record.value(), "format timestamp");
-            if (struct != null && struct.getInt64(field) != null) {
-                timestamp = struct.getInt64(field);
-            }
-        }
+        Long timestamp = extractTimestamp(record, field);
+
         if (timestamp == null) {
             throw new DataException("Timestamp field \"" + field + "\" missing on record value: " + record);
         }
@@ -104,6 +103,16 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
 
         final String replace1 = TOPIC.matcher(topicFormat).replaceAll(Matcher.quoteReplacement(topic));
         final String updatedTopic = TIMESTAMP.matcher(replace1).replaceAll(Matcher.quoteReplacement(formattedTimestamp));
+        R deletedField = deleteDelegate.apply(record);
+        Boolean deleted = Boolean.valueOf((String) deletedField.value());
+        if (Boolean.TRUE.equals(deleted)) {
+            return record.newRecord(
+                    updatedTopic, record.kafkaPartition(),
+                    record.keySchema(), record.key(),
+                    record.valueSchema(), null,
+                    record.timestamp()
+            );
+        }
         return record.newRecord(
                 updatedTopic, record.kafkaPartition(),
                 record.keySchema(), record.key(),
@@ -112,9 +121,18 @@ public class EnhancedTimestampRouter<R extends ConnectRecord<R>> implements Tran
         );
     }
 
+    private Long extractTimestamp(R record, String field) {
+        Struct struct = Requirements.requireStructOrNull(record.value(), "format timestamp");
+        if (struct != null && struct.getInt64(field) != null) {
+            return struct.getInt64(field);
+        }
+        return null;
+    }
+
     @Override
     public void close() {
         timestampFormat = null;
+        deleteDelegate.close();
     }
 
     @Override

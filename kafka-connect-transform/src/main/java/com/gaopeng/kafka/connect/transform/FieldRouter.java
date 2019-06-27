@@ -7,6 +7,7 @@ import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.ConnectRecord;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.errors.DataException;
+import org.apache.kafka.connect.transforms.ExtractField;
 import org.apache.kafka.connect.transforms.Transformation;
 import org.apache.kafka.connect.transforms.util.Requirements;
 import org.apache.kafka.connect.transforms.util.SimpleConfig;
@@ -22,8 +23,10 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
 
     private static final Pattern VALUE = Pattern.compile("${value}", Pattern.LITERAL);
 
+    private static final String DELETED_FIELD = "__deleted";
+
     public static final String OVERVIEW_DOC =
-            "Update the record's topic field as a function of the original topic value and the specified field value of a map or struct"
+            "Update the record's topic field as a function of the original topic value and the specified field value of a struct"
                     + "<p/>"
                     + "This is mainly useful for sink connectors, since the topic field is often used to determine the equivalent entity name in the destination system"
                     + "(e.g. database table or search index name).";
@@ -56,6 +59,7 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
     private Map<String, String> topicFieldMap = Collections.emptyMap();
     private String defaultField;
     private Set<String> ignoreTopics = Collections.emptySet();
+    private final ExtractField<R> deleteDelegate = new ExtractField.Value<>();
 
     @Override
     public void configure(Map<String, ?> props) {
@@ -75,6 +79,10 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
                     .map(pair -> pair.split(":"))
                     .collect(Collectors.toMap(pair -> pair[0], pair -> pair[1]));
         }
+
+        Map<String, String> delegateConfig = new HashMap<>();
+        delegateConfig.put("field", DELETED_FIELD);
+        deleteDelegate.configure(delegateConfig);
     }
 
     @Override
@@ -88,18 +96,10 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
             throw new DataException(String.format("You must configure at least \"%s\" or \"%s\"", ConfigName.TOPIC_FIELD_MAP, ConfigName.DEFAULT_FIELD));
         }
         Object fieldValue = null;
-        if (record.value() instanceof Map) {
-            final Map<String, Object> values = Requirements.requireMapOrNull(record.value(), "transform topic");
-            if (values != null && values.containsKey(field)) {
-                fieldValue = values.get(field);
-            }
-        } else if (record.value() instanceof Struct) {
-            Struct struct = Requirements.requireStructOrNull(record.value(), "transform topic");
-            if (struct != null && struct.get(field) != null) {
-                fieldValue = struct.get(field);
-            }
-        } else {
-            throw new DataException("The record is neither a Map nor a Struct");
+
+        Struct struct = Requirements.requireStructOrNull(record.value(), "transform topic");
+        if (struct != null && struct.get(field) != null) {
+            fieldValue = struct.get(field);
         }
 
         if (fieldValue == null) {
@@ -115,6 +115,17 @@ public class FieldRouter<R extends ConnectRecord<R>> implements Transformation<R
 
         final String replace1 = TOPIC.matcher(topicFormat).replaceAll(Matcher.quoteReplacement(topic));
         final String updatedTopic = VALUE.matcher(replace1).replaceAll(Matcher.quoteReplacement(fieldValue.toString()));
+
+        R deletedField = deleteDelegate.apply(record);
+        Boolean deleted = Boolean.valueOf((String) deletedField.value());
+        if (Boolean.TRUE.equals(deleted)) {
+            return record.newRecord(
+                    updatedTopic, record.kafkaPartition(),
+                    record.keySchema(), record.key(),
+                    record.valueSchema(), null,
+                    record.timestamp()
+            );
+        }
         return record.newRecord(
                 updatedTopic, record.kafkaPartition(),
                 record.keySchema(), record.key(),

@@ -1,3 +1,5 @@
 rootProject.name = 'kafka-connect-extension'
 include 'kafka-connect-transform'
+include 'kafka-connect-ignite'
+include 'common'
 
